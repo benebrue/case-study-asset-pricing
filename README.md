@@ -1,1 +1,1 @@
-# case-study-asset-pricing
+# Case Study Asset Pricing
