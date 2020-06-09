@@ -43,7 +43,7 @@ stockdata$formation_end<-formation_end
 
 #find number of returns in formation period 
 count_returns <- function(permno_input, start_input, end_input){
-  length((stockdata %>% filter(permno==permno_input & date>=start_input & date<=end_input)))
+  nrow((stockdata %>% filter(permno==permno_input & date>=start_input & date<=end_input)))
 }
 count_returns <- Vectorize(count_retruns)
 stockdata <- stockdata %>% mutate(no_retruns = count_returns(permno, formation_start, formation_end))
@@ -53,7 +53,7 @@ stockdata <- filter(stockdata, no_returns >= 8)
 
 #function to sum up filtered by permno, and formation period
 sum_return <- function(permno_input, start_input, end_input){
-  sum((stockdata %>% filter(permno==permno_input & date>=start_input & date<=end_input))$value)
+  sum((stockdata %>% filter(permno==permno_input & date>=start_input & date<=end_input))$log_return)
 }
 sum_return <- Vectorize(sum_return)
 stockdata_1 <-stockdata %>% mutate(sum_log_return = sum_return(permno, formation_start, formation_end))
