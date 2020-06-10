@@ -10,6 +10,7 @@ stockdata<-fread("./data/stock_data.csv")
 stockdata<-stockdata[1:10000,]
 stockdata<-stockdata[complete.cases(stockdata), ]
 stockdata
+# TODO: implement filtering of the data as in DataDiscovery
 
 # implement a monthly momentum portfolio (daily version described in the paper would require information on daily 
 # stock returns which we don't have)
@@ -126,4 +127,86 @@ portfolios
 # to calculate the weights, we need conditional expected return and conditional variance for the coming month
 
 # proxy for conditional expected return: fitted regression of WML returns on interaction between bear market indicator
-# and market variance over the preceding six months
+# and market variance over the preceding six months --> for this regression, we need the variance and the bear
+# market indicator
+
+# estimate the variance of the market --> to do this, load the stockdata again and build the (value-weighted) market
+# portfolio
+
+# read file with stock data
+stockdata2<-fread("./data/stock_data.csv")
+#!!!for development purposes only: reduce size of the dataset
+stockdata2<-stockdata2[1:10000,]
+stockdata2<-stockdata2[complete.cases(stockdata2), ]
+stockdata2
+
+# check classes of columns
+lapply(stockdata2, class)
+# date is currently a char value --> convert date to an actual date
+stockdata2[,date:=as.Date(date,format="%Y-%m-%d")]
+lapply(stockdata2, class)
+
+# calculate total market capitalization for each date
+stockdata2$tcapsum<-ave(stockdata2$tcap, stockdata2$date, FUN=sum)
+
+# group by date and calculate value-weighted return
+stockdata2<-stockdata2 %>% group_by(date) %>%
+    summarise(vw_return = sum(return * tcap / tcapsum))
+stockdata2
+
+# convert back from a tibble to a data.table
+setDT(stockdata2)
+stockdata2
+
+# calculate the start of a 126-day time period for each date which will be used to estimate the variance (see
+# page 230 of the paper)
+stockdata2[, calc_start:= date %m-% days(126)]
+stockdata2
+
+# calculate the variance for each date using the specified periods of time
+var_vec = function(startdate, enddate){
+    temp<-(stockdata2 %>% filter(date >= startdate & date <= enddate))$vw_return
+    result<-ifelse(length(temp)>0, var(temp), NA) # return var if more than one vw_return exists, else return NA
+}
+
+var_vec = Vectorize(var_vec)
+
+# execute variance calculation and remove rows that have no variance (NA)
+stockdata2$var<-mapply(var_vec, stockdata2$calc_start, stockdata2$date)
+stockdata2
+stockdata2<-stockdata2[complete.cases(stockdata2), ]
+stockdata2
+
+# load recession indicator data
+recessiondata<-fread("./data/nber_recessions.csv")
+recessiondata
+# check classes of columns
+lapply(recessiondata, class)
+# date is currently a char value --> convert date to an actual date
+recessiondata[,date:=as.Date(date,format="%Y-%m-%d")]
+lapply(recessiondata, class)
+
+# opposed to the data description, the first day instead of the last day is specified for each date --> change this
+day(recessiondata$date)<-days_in_month(recessiondata$date) # set day of the date = last day of the month
+
+# merge recessiondata with stockdata
+stockdata2<-merge(stockdata2, recessiondata, by.x="date", by.y="date", all.x=TRUE)
+stockdata2
+
+# remove NA rows (interim solution, can be removed once filtering of the data as in DataDiscovery has been added
+stockdata2<-stockdata2[complete.cases(stockdata2), ]
+stockdata2
+portfolios
+
+# create data table for the expected return regression
+# we need to shift the date for the stockdata2 one month forward before merging it with portfolios so that the 
+# variance and bear market indicator of the current month is used to predict the return of the WML
+erpdata<-stockdata2[,shifted_date:=date %m+% months(1)]
+day(erpdata$shifted_date)<-days_in_month(erpdata$shifted_date)
+erpdata
+erpdata<-merge(erpdata, portfolios[,.(date, return_wml)], by.x="shifted_date", by.y="date") # outer join
+erpdata$calc_start<-NULL
+erpdata$shifted_date<-NULL
+erpdata$vw_return<-NULL
+erpdata
+# TODO: next step would be the regression
