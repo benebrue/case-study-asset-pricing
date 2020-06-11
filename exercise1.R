@@ -204,9 +204,31 @@ portfolios
 erpdata<-stockdata2[,shifted_date:=date %m+% months(1)]
 day(erpdata$shifted_date)<-days_in_month(erpdata$shifted_date)
 erpdata
-erpdata<-merge(erpdata, portfolios[,.(date, return_wml)], by.x="shifted_date", by.y="date") # outer join
+erpdata<-merge(erpdata, portfolios[,.(date, return_wml)], by.x="shifted_date", by.y="date") # inner join
 erpdata$calc_start<-NULL
 erpdata$shifted_date<-NULL
 erpdata$vw_return<-NULL
 erpdata
-# TODO: next step would be the regression
+
+# now calculate the date 6 months ago for each row so we know which date range the regression must be executed for
+erpdata[,reg_start:=date %m-% months(6)]
+day(erpdata$reg_start)<-days_in_month(erpdata$reg_start)
+erpdata
+
+# function for expected return regression
+erreg = function(startdate, enddate){
+    temp<-(erpdata %>% filter(date >= startdate & date < enddate)) # <enddate so current month (for which return
+    # will be predicted) isn't already used for the estimation of the regression parameters
+    result<-ifelse(length(temp)==6, predict(lm(return_wml ~ recession + var + recession*var, data=temp),
+                                            newdata=erpdata[date==enddate,]), NA) 
+    # return predicted return for the next month if there are 6 preceding months that the regression can be executed
+    # on, else return NA
+}
+
+erreg = Vectorize(var_vec)
+
+# apply the linear regression for each 6-month time window and predict next month's return
+erpdata$return_wml_pred<-mapply(erreg, erpdata$reg_start, erpdata$date)
+erpdata
+
+# next step is fitting a GJR-GARCH model on the data to estimate the variance in an upcoming period of time
