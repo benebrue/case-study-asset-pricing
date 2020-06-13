@@ -4,6 +4,8 @@ library(data.table)
 library(lubridate)
 # load the dplyr package to enable use of the pipe operator
 library(dplyr)
+# load the rugarch package which will be used for variance prediction
+library(rugarch)
 # read file with stock data
 stockdata<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
@@ -198,29 +200,29 @@ stockdata2<-stockdata2[complete.cases(stockdata2), ]
 stockdata2
 portfolios
 
-# create data table for the expected return regression
+# create data table for the expected return and variance regression (which will be used for weighting)
 # we need to shift the date for the stockdata2 one month forward before merging it with portfolios so that the 
 # variance and bear market indicator of the current month is used to predict the return of the WML
-erpdata<-stockdata2[,shifted_date:=date %m+% months(1)]
-day(erpdata$shifted_date)<-days_in_month(erpdata$shifted_date)
-erpdata
-erpdata<-merge(erpdata, portfolios[,.(date, return_wml)], by.x="shifted_date", by.y="date") # inner join
-erpdata$calc_start<-NULL
-erpdata$shifted_date<-NULL
-erpdata$vw_return<-NULL
-erpdata
+erdata<-stockdata2[,shifted_date:=date %m+% months(1)]
+day(erdata$shifted_date)<-days_in_month(erdata$shifted_date)
+erdata
+erdata<-merge(erdata, portfolios[,.(date, return_wml)], by.x="shifted_date", by.y="date") # inner join
+erdata$calc_start<-NULL
+erdata$shifted_date<-NULL
+erdata$vw_return<-NULL
+erdata
 
 # now calculate the date 6 months ago for each row so we know which date range the regression must be executed for
-erpdata[,reg_start:=date %m-% months(6)]
-day(erpdata$reg_start)<-days_in_month(erpdata$reg_start)
-erpdata
+erdata[,reg_start:=date %m-% months(6)]
+day(erdata$reg_start)<-days_in_month(erdata$reg_start)
+erdata
 
 # function for expected return regression
 erreg = function(startdate, enddate){
-    temp<-(erpdata %>% filter(date >= startdate & date < enddate)) # <enddate so current month (for which return
+    temp<-(erdata %>% filter(date >= startdate & date < enddate)) # <enddate so current month (for which return
     # will be predicted) isn't already used for the estimation of the regression parameters
     result<-ifelse(length(temp)==6, predict(lm(return_wml ~ recession + var + recession*var, data=temp),
-                                            newdata=erpdata[date==enddate,]), NA) 
+                                            newdata=erdata[date==enddate,]), NA) 
     # return predicted return for the next month if there are 6 preceding months that the regression can be executed
     # on, else return NA
 }
@@ -228,7 +230,29 @@ erreg = function(startdate, enddate){
 erreg = Vectorize(var_vec)
 
 # apply the linear regression for each 6-month time window and predict next month's return
-erpdata$return_wml_pred<-mapply(erreg, erpdata$reg_start, erpdata$date)
-erpdata
+erdata$return_wml_pred<-mapply(erreg, erdata$reg_start, erdata$date)
+erdata
 
 # next step is fitting a GJR-GARCH model on the data to estimate the variance in an upcoming period of time
+# to do so, we will use the rugarch package (https://cran.r-project.org/web/packages/rugarch/index.html)
+# library(PerformanceAnalytics)
+# chart.Histogram(erdata$return_wml, methods = c("add.normal", "add.density"), colorset=c("gray","red","blue"))
+# from the chart we can see that the distribution of our returns has a high peak around 0, fat tails and is skewed
+# --> use skewed student t distribution instead of normal distribution  ("sstd)
+
+# create a table containing the data for fitting the GJR-GARCH model
+vdata<-portfolios
+vdata$return_bottom<-NULL
+vdata$return_top<-NULL
+vdata
+
+# convert vdata to a timeseries object which the rugarch package is optimized for
+vdata_xts<-as.xts.data.table(vdata)
+
+garchspec<-ugarchspec(
+    mean.model=list(armaOrder=c(0,0), include.mean=TRUE),
+    variance.model=list(model="gjrGARCH"),
+    distribution.model="sstd"
+)
+garchfit<-ugarchfit(data=vdata_xts, spec=garchspec)
+sigma(garchfit)
