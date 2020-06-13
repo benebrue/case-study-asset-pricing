@@ -118,7 +118,23 @@ portfolios<-merge(bottom, top, by.x="date", by.y="date")
 colnames(portfolios)<-c("date", "return_bottom", "return_top")
 portfolios
 
-portfolios[,return_wml:=return_top-return_bottom]
+# if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
+# margin that we post as we implement our strategy earns interest at this rate
+ffdata<-fread("./data/F-F_Research_Data_Factors.csv")
+ffdata$RF<-ffdata$RF/100 # convert from percentage values to actual values
+ffdata[,date:=as.Date(paste(year, month, "01", sep="-"))]
+day(ffdata$date)<-days_in_month(ffdata$date)
+ffdata
+ffdata<-ffdata[,.(date, RF)]
+ffdata
+
+
+# merge table containing the risk-free returns with the portfolios table
+portfolios<-merge(portfolios, ffdata, by.x="date", by.y="date")
+portfolios
+
+# calculate return of the WML portfolio for each month (see Appendix A of the paper)
+portfolios[,return_wml:=return_top-return_bottom+RF]
 portfolios
 
 # at this the step "portfolios" contains the value-weighted returns of the top 10% portfolio, the value-weighted
@@ -248,6 +264,7 @@ vdata
 
 # convert vdata to a timeseries object which the rugarch package is optimized for
 vdata_xts<-as.xts.data.table(vdata)
+vdata_xts
 
 garchspec<-ugarchspec(
     mean.model=list(armaOrder=c(0,0), include.mean=TRUE),
@@ -255,4 +272,57 @@ garchspec<-ugarchspec(
     distribution.model="sstd"
 )
 garchfit<-ugarchfit(data=vdata_xts, spec=garchspec)
-sigma(garchfit)
+coef(garchfit)
+v_pred_xts<-sigma(garchfit) # get standard deviations predicted by the GJR-GARCH model
+v_pred<-as.data.table(v_pred_xts) #convert back to data table
+colnames(v_pred)<-c("date", "v_pred")
+v_pred
+# convert standard deviation to variance
+v_pred$v_pred<-v_pred$v_pred^2
+v_pred
+
+# compute one-month lag for the variance (since for the weighting we want to use next month's predicted variance for
+# today's weight)
+v_pred<-v_pred[,shifted_date:=date %m-% months(1)]
+day(v_pred$shifted_date)<-days_in_month(v_pred$shifted_date)
+v_pred
+weightdata<-merge(erdata, v_pred, by.x="date", by.y="shifted_date") # inner join
+weightdata
+weightdata$date.y<-NULL
+weightdata$reg_start<-NULL
+weightdata$var<-NULL
+weightdata$recession<-NULL
+weightdata
+
+# in the paper, Daniel and Moskowitz use another regression (variance of future 22-day returns on the GJR-GARCH 
+# estimate of the variance and the variance within the past 126 days) to predict the future variance
+# as we don't have information about daily returns, we can't compute the future 22-day variance and therefore cannot
+# compute this regression --> we will simply use the GJR-GARCH variance estimates for weighting
+
+# now we need to determine lambda in such a way that the variance of our momentum portfolio is equal to the variance
+# of the value-weighted return of the market
+
+# calculate the variance of the market
+v_market<-var(filter(stockdata2, date<=max(v_pred$date) & date>=min(v_pred$date))$vw_return)
+v_market
+
+# calculate returns of the weighted momentum strategy assuming lambda is known
+# in weightdata, return_wml, return_wml_pred and v_pred are the realized return, predicted return and predicted
+# variance in the month after the date specified in column "date"
+weightdata
+lambda<-1
+
+# note that the paper assumes (see Appendix A) that shortselling stocks with a value of x only requires an amount of
+# x to be deposited as margin (unlike actual regulations in the US that nowadays require 150% of x as margin)
+# therefore if one has 1$, use the 1$ as margin for shorting 1$ of the losers (which yields 1$) and use that money
+# to go long on 1$ of the winners
+# to calculate the variance we also need to know the risk-free rate of the upcoming month
+ffdata[,shifted_date:=date %m-% months(1)]
+day(ffdata$shifted_date)<-days_in_month(ffdata$shifted_date)
+ffdata
+weightdata<-merge(weightdata, ffdata, by.x="date", by.y="shifted_date")
+weightdata
+weightdata$date.y<-NULL
+weightdata
+weightdata$weight<-1/(2*lambda)*weightdata$return_wml_pred/weightdata$v_pred
+weightdata
