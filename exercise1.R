@@ -6,10 +6,12 @@ library(lubridate)
 library(dplyr)
 # load the rugarch package which will be used for variance prediction
 library(rugarch)
+# load the pbapply library to show a progress bar when using mapply
+library(pbapply)
 # read file with stock data
 stockdata<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
-stockdata<-stockdata[1:10000,]
+#stockdata<-stockdata[1:10000,]
 stockdata<-stockdata[complete.cases(stockdata), ]
 stockdata
 # TODO: implement filtering of the data as in DataDiscovery
@@ -60,10 +62,10 @@ csum = function(permno_input, startdate, enddate){
 
 csum = Vectorize(csum)
 
-#execute calculation
-stockdata$cum_log_return<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-stockdata
-
+#execute calculation (use pbapply to show a progress bar)
+stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+# stockdata$cum_log_return2<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+save.image(file='./checkpoint_1.RData')
 # calculate number of stock returns available for the past 11 months 
 fcount = function(permno_input, startdate, enddate){
     nrow((stockdata %>% filter(permno == permno_input & date >= startdate & date <= enddate)))
@@ -72,9 +74,9 @@ fcount = function(permno_input, startdate, enddate){
 fcount = Vectorize(fcount)
 
 #execute counting
-stockdata$available_returns<-mapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
-
+save.image(file='./checkpoint_2.RData')
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
