@@ -6,10 +6,12 @@ library(lubridate)
 library(dplyr)
 # load the rugarch package which will be used for variance prediction
 library(rugarch)
+# load the pbapply library to show a progress bar when using mapply
+library(pbapply)
 # read file with stock data
 stockdata<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
-stockdata<-stockdata[1:10000,]
+#stockdata<-stockdata[1:10000,]
 stockdata<-stockdata[complete.cases(stockdata), ]
 stockdata
 # TODO: implement filtering of the data as in DataDiscovery
@@ -60,21 +62,21 @@ csum = function(permno_input, startdate, enddate){
 
 csum = Vectorize(csum)
 
-#execute calculation
-stockdata$cum_log_return<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-stockdata
-
+#execute calculation (use pbapply to show a progress bar)
+stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+# stockdata$cum_log_return2<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+save.image(file='./wksp/checkpoint_1.RData')
 # calculate number of stock returns available for the past 11 months 
 fcount = function(permno_input, startdate, enddate){
-    nrow((stockdata %>% filter(permno == permno_input & date >= startdate & date <= enddate)))
+    nrow((stockdata[permno == permno_input,] %>% filter(date >= startdate & date <= enddate)))
 }
 
 fcount = Vectorize(fcount)
 
 #execute counting
-stockdata$available_returns<-mapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
-
+save.image(file='./wksp/checkpoint_2.RData')
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
@@ -117,6 +119,11 @@ bottom
 portfolios<-merge(bottom, top, by.x="date", by.y="date")
 colnames(portfolios)<-c("date", "return_bottom", "return_top")
 portfolios
+
+#plotting
+portfolios$cum_top<-cumprod(1+portfolios$return_top)
+portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
+ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=cum_bottom,color="bottom")) + geom_line(aes(y=cum_top,color="top"))
 
 # if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
 # margin that we post as we implement our strategy earns interest at this rate
@@ -310,7 +317,7 @@ v_market
 # in weightdata, return_wml, return_wml_pred and v_pred are the realized return, predicted return and predicted
 # variance in the month after the date specified in column "date"
 weightdata
-lambda<-1
+l<-1
 
 # note that the paper assumes (see Appendix A) that shortselling stocks with a value of x only requires an amount of
 # x to be deposited as margin (unlike actual regulations in the US that nowadays require 150% of x as margin)
@@ -324,5 +331,49 @@ weightdata<-merge(weightdata, ffdata, by.x="date", by.y="shifted_date")
 weightdata
 weightdata$date.y<-NULL
 weightdata
-weightdata$weight<-1/(2*lambda)*weightdata$return_wml_pred/weightdata$v_pred
+weightdata$weight<-1/(2*l)*weightdata$return_wml_pred/weightdata$v_pred
 weightdata
+
+# calculate the return of the dynamic portfolio
+weightdata[,return_dyn_pf:=weight*return_wml+(1-weight)*RF]
+weightdata
+var(weightdata$return_dyn_pf)
+
+# we actually need to set lambda so that the variance of our portfolio is equal to v_market (variance of the market)
+# define a function that returns (var_market - var_dynamic_portfolio) and find the roots of this equation
+var_function = function(lambda, weights=weightdata){
+    weights$weight<-1/(2*lambda)*weights$return_wml_pred/weights$v_pred
+    weights[,return_dyn_pf:=weight*return_wml+(1-weight)*RF]
+    print(weights)
+    var(weights$return_dyn_pf) - v_market
+}
+
+#--------------necessary for plotting the function-------------
+# var_function_vec<-Vectorize(var_function)
+# curve(var_function_vec, from = -3, to = 3); abline(h = 0, lty = 3)
+# the plot shows roots around zero with the function value being positive around zero and negative for -infinity and
+# infinity --> we decide to prefer a positive lambda value and therefore choose the interval (0.01, 100) for uniroot
+# (function is not defined at lambda=0)
+#--------------------------------------------------------------
+
+ursolution<-uniroot(var_function, interval=c(0.01, 100), tol=1e-10, maxiter=1000, trace=1)
+lambda<-ursolution$root
+lambda
+ursolution$f.root # function value at the root found --> should be zero or close to zero
+ursolution$iter # number of iterations
+ursolution$estim.prec # estimated precision
+
+# we have thus found the lambda that we will use for our portfolio
+weightdata$weight<-1/(2*lambda)*weightdata$return_wml_pred/weightdata$v_pred
+weightdata[,return_dyn_pf:=weight*return_wml+(1-weight)*RF]
+weightdata
+var(weightdata$return_dyn_pf)
+v_market
+var_function(lambda)
+
+weightdata$cum_returns_dyn<-cumprod(1+weightdata$return_dyn_pf)
+weightdata$cum_returns_nondyn<-cumprod(1+weightdata$return_wml)
+weightdata
+library(ggplot2)
+ggplot(data=weightdata,aes(x=date)) + geom_line(aes(y=cum_returns_dyn,color="dynamic_portfolio")) + geom_line(
+    aes(y=cum_returns_nondyn,color="nondynamic_portfolio"))
