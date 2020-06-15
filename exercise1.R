@@ -65,10 +65,10 @@ csum = Vectorize(csum)
 #execute calculation (use pbapply to show a progress bar)
 stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 # stockdata$cum_log_return2<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-save.image(file='./checkpoint_1.RData')
+save.image(file='./wksp/checkpoint_1.RData')
 # calculate number of stock returns available for the past 11 months 
 fcount = function(permno_input, startdate, enddate){
-    nrow((stockdata %>% filter(permno == permno_input & date >= startdate & date <= enddate)))
+    nrow((stockdata[permno == permno_input,] %>% filter(date >= startdate & date <= enddate)))
 }
 
 fcount = Vectorize(fcount)
@@ -76,7 +76,7 @@ fcount = Vectorize(fcount)
 #execute counting
 stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
-save.image(file='./checkpoint_2.RData')
+save.image(file='./wksp/checkpoint_2.RData')
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
