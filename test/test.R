@@ -8,10 +8,8 @@ library(dplyr)
 library(rugarch)
 # load the pbapply library to show a progress bar when using mapply
 library(pbapply)
-# load the ggplot library to enable plotting
-library(ggplot2)
 # read file with stock data
-stockdata<-fread("./data/stock_data.csv")
+stockdata<-fread("./testdata.csv")
 #!!!for development purposes only: reduce size of the dataset
 #stockdata<-stockdata[1:10000,]
 stockdata<-stockdata[complete.cases(stockdata), ]
@@ -67,7 +65,7 @@ csum = Vectorize(csum)
 #execute calculation (use pbapply to show a progress bar)
 stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 # stockdata$cum_log_return2<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-save.image(file='./wksp/checkpoint_1.RData')
+# save.image(file='./wksp/checkpoint_1.RData')
 # calculate number of stock returns available for the past 11 months 
 fcount = function(permno_input, startdate, enddate){
     nrow((stockdata[permno == permno_input,] %>% filter(date >= startdate & date <= enddate)))
@@ -78,14 +76,7 @@ fcount = Vectorize(fcount)
 #execute counting
 stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
-save.image(file='./wksp/checkpoint_2.RData')
-
-#------------------------------------------------load checkpoint------------------------------------------------#
-#################################################################################################################
-load('./wksp/checkpoint_2.RData')
-#################################################################################################################
-#---------------------------------------------------------------------------------------------------------------#
-
+# save.image(file='./wksp/checkpoint_2.RData')
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
@@ -97,9 +88,6 @@ stockdata[,bin:=cut(cum_log_return,
                     labels=FALSE),
           by=date]
 stockdata
-
-# for checks:
-# stockdata[date==as.Date("2001-09-30") & bin==10,]
 
 # get data of the stocks in the top decile
 top<-stockdata[bin == 10]
@@ -133,9 +121,8 @@ colnames(portfolios)<-c("date", "return_bottom", "return_top")
 portfolios
 
 #plotting
-portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
 portfolios$cum_top<-cumprod(1+portfolios$return_top)
-
+portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
 ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=cum_bottom,color="bottom")) + geom_line(aes(y=cum_top,color="top"))
 
 # if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
@@ -174,6 +161,7 @@ portfolios
 # read file with stock data
 stockdata2<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
+stockdata2<-stockdata2[1:10000,]
 stockdata2<-stockdata2[complete.cases(stockdata2), ]
 stockdata2
 
@@ -386,6 +374,6 @@ var_function(lambda)
 weightdata$cum_returns_dyn<-cumprod(1+weightdata$return_dyn_pf)
 weightdata$cum_returns_nondyn<-cumprod(1+weightdata$return_wml)
 weightdata
-
+library(ggplot2)
 ggplot(data=weightdata,aes(x=date)) + geom_line(aes(y=cum_returns_dyn,color="dynamic_portfolio")) + geom_line(
     aes(y=cum_returns_nondyn,color="nondynamic_portfolio"))
