@@ -2,13 +2,15 @@
 #install.packages("data.table")
 #install.packages("lubridate")
 #install.packages("dplyr")
-install.packages("ggplot2")
+install.packages("ggplot2")ss
+install.packages('pbapply')
 
 #load Packages
 library(data.table)
 library(lubridate)
 library(dplyr)
 library(ggplot2)
+library(pbapply)
 
 #load and formate stock data
 stockdata <- fread("./data/stock_data.csv")
@@ -37,8 +39,9 @@ dataFamaFrench$dateHelp <- NULL
 dataRecession<-fread("./data/nber_recessions.csv")
 dataRecession
 lapply(dataRecession, class)
-#TODO: maybe transform data to months day to months end
+#Transform data to months day to months end
 dataRecession[,date:=as.Date(date,format="%Y-%m-%d")]
+day(dataRecession$date)<-days_in_month(dataRecession$date)
 
 #following lines are just for performance, reduce the used data in later steps
 #get highest intersection in date
@@ -51,11 +54,16 @@ dataFamaFrench <- filter(dataFamaFrench, date<=max_date&date>=min_date)
 dataRecession <- filter(dataRecession, date<=max_date&date>=min_date)
 
 #as we need at least 8 retruns for one id drop all pernom with lower frequency for performance reasons 
-#stockdata <- stockdata %>% group_by(permno) %>% filter(n() >= 8)
+stockdata <- stockdata %>% group_by(permno) %>% filter(n() >= 8)
+setDT(stockdata)
 
 #no. of shares in stock universe
 no_stock <- length(unique(stockdata$permno))
 no_stock
+
+#Checkpoint to save Workspace
+save.image(file='./wksp/checkpoint_1.RData')
+load('./wksp/checkpoint_1.RData')
 
 
 #****************************
@@ -63,12 +71,7 @@ no_stock
 #****************************
 #Testing
 
-stockdata<-stockdata[1:9000,]
-
-
-#Checkpoint to save Workspace
-save.image(file='./wksp/checkpoint_1.RData')
-load('./wksp/checkpoint_1.RData')
+#stockdata<-stockdata[1:100000,]
 
 
 #Find monthly momentum portfolio based on paper (momentum crashes)
@@ -109,12 +112,15 @@ fcount = function(permno_input, startdate, enddate){
 fcount = Vectorize(fcount)
 
 #execute counting
-stockdata$available_returns<-mapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
 
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
+
+#save.image(file='./wksp/checkpoint_1_full.RData')
+load('./wksp/checkpoint_1_full.RData')
 
 # calculate cumulative log returns for each row
 # define function
@@ -125,7 +131,7 @@ csum = function(permno_input, startdate, enddate){
 csum = Vectorize(csum)
 
 #execute calculation
-stockdata$cum_log_return<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
 stockdata
 
 
@@ -138,38 +144,85 @@ stockdata[,bin:=cut(cum_log_return,
                     labels=FALSE),
           by=date]
 stockdata
+#check deciles for random date and bin1 and bin10
+mean(filter(stockdata, bin==1&date=='2012-11-30')$cum_log_return)
+mean(filter(stockdata, bin==10&date=='2012-11-30')$cum_log_return)
 
-save.image(file='./wksp/checkpoint_2.RData')
-load('./wksp/checkpoint_2.RData')
+
+#save.image(file='./wksp/checkpoint_2_full.RData')
+load('./wksp/checkpoint_2_full.RData')
 
 #calculate sum of capitalization for each month and bin 
 #to compute weight of shares as value weighted approch is mentioned in the paper
-capital_cum <- function(date_input, bin_input){sum((stockdata[date == date_input,]%>%filter(bin==bin_input))$tcap)
-}
-capital_cum = Vectorize(capital_cum)
-stockdata$cum_cap <- mapply(capital_cum,stockdata$date,stockdata$bin)
-stockdata
+#capital_cum <- function(date_input, bin_input){sum((stockdata[date == date_input,]%>%filter(bin==bin_input))$tcap)}
+#capital_cum = Vectorize(capital_cum)
+#stockdata$cum_cap <- pbmapply(capital_cum,stockdata$date,stockdata$bin)
+#stockdata
+
 #calculate weight for each line
-stockdata$weight <- stockdata$tcap / stockdata$cum_cap
-stockdata
+#stockdata$weight <- stockdata$tcap / stockdata$cum_cap
+#stockdata
 #calculate vaule weighted return for each line
-stockdata$weighted_return <- stockdata$return * stockdata$weight
+#stockdata$weighted_return <- stockdata$return * stockdata$weight
 
 #extract returns for each portfolio by date and bin
-portfolios <- stockdata %>% 
-                select(date,bin,weighted_return) %>%
-                group_by(date, bin) %>% 
-                summarise_each(funs(sum))
+#portfolios <- stockdata %>% 
+#                select(date,bin,return,tcap) %>%
+#                group_by(date, bin) %>% 
+#                summarise_each(funs(sum))
+
+#extract top portfolio and calculate tcap sum for each period
+portfolio_10 <- filter(stockdata,bin==10)
+portfolio_10$tcapsum<-ave(portfolio_10$tcap, portfolio_10$date, FUN=sum)
+
+#calculate value weighted return for each period
+portfolio_10<-portfolio_10 %>% group_by(date) %>%
+  summarise(vw_return = sum(return * tcap / tcapsum))
+
+portfolio_10
+setDT(portfolio_10)
+
+portfolio_10$invest_return <- cumprod(1+portfolio_10$vw_return)
+setDT(portfolio_10)
 
 
+#extract bottom portfolio and calculate tcap sum for each period
+portfolio_1 <- filter(stockdata,bin==1)
+portfolio_1$tcapsum<-ave(portfolio_1$tcap, portfolio_1$date, FUN=sum)
 
-#calculated cumulative return
-# portfolios$invest_return <- cumprod(1+portfolios$weighted_return) #doesn't work, first extract pf10
+#calculate value weighted return for each period
+portfolio_1<-portfolio_1 %>% group_by(date) %>%
+  summarise(vw_return = sum(return * tcap / tcapsum))
+
+portfolio_1
+setDT(portfolio_1)
+
+portfolio_1$invest_return <- cumprod(1+portfolio_1$vw_return)
+setDT(portfolio_1)
+
+#merge tables
+portfolios<-merge(portfolio_10, portfolio_1, by.x='date', by.y='date')
+portfolios
+colnames(portfolios) <- c('date','vw_return_top','invest_return_top','vw_return_bottom','invest_return_bottom')
+
+#merge RF into table
+riskfree <- dataFamaFrench
+riskfree$mktrf <- NULL
+riskfree$smb <- NULL
+riskfree$hml <- NULL
+riskfree$rf <- riskfree$rf/100
+portfolios <- merge(portfolios, riskfree,by.x='date', by.y='date')
+portfolios[,invest_rf:=cumprod(1+rf)]
 
 
+#long winner decile, short loser decil
+portfolios$wml_return <- portfolios$vw_return_top-portfolios$vw_return_bottom+portfolios$rf
+portfolios$invest_return_wml <- cumprod(1+portfolios$wml_return)
 
-#extract momentum portfolio
-portfolio_10 <- filter(portfolios,bin==10)
-portfolio_10$invest_return <- cumprod(1+portfolio_10$weighted_return)
 
-ggplot(data=portfolio_10,aes(x=date)) + geom_line(aes(y=invest_return,color="red"))
+#save.image(file='./wksp/checkpoint_3_full.RData')
+load('./wksp/checkpoint_3_full.RData')
+
+portfolios
+ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=invest_return_top,color="Top"))+ geom_line(aes(y=invest_return_bottom,color="Bottom"))+ geom_line(aes(y=invest_return_wml,color="WML")) +geom_line(aes(y=invest_rf,color="RF"))
+
