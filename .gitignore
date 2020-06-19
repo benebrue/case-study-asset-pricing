@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.ipynb_checkpoints/
 
 # General
 .DS_Store

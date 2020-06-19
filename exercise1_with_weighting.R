@@ -6,14 +6,14 @@ library(lubridate)
 library(dplyr)
 # load the rugarch package which will be used for variance prediction
 library(rugarch)
-# load the pbapply library to show a progress bar when using mapply
-library(pbapply)
+# load the matrixStats library to enable use of the rowProds operation
+library(matrixStats)
 # load the ggplot library to enable plotting
 library(ggplot2)
 # read file with stock data
-stockdata<-fread("./testdata_one_stock_per_bin.csv")
+stockdata<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
-#stockdata<-stockdata[1:10000,]
+stockdata<-stockdata[1:10000,]
 stockdata<-stockdata[complete.cases(stockdata), ]
 stockdata
 # TODO: implement filtering of the data as in DataDiscovery
@@ -35,80 +35,85 @@ stockdata[,date:=as.Date(date,format="%Y-%m-%d")]
 lapply(stockdata, class)
 
 
-#create column for log returns
-stockdata[,log_return:=log(1+return)]
-stockdata
-
 # calculate start of the formation period for each date
-ranking_start<-stockdata$date %m-% months(12) # subtract eleven months because the return stored as that of the 
-# point in time 11 months ago is the one realized starting 12 months ago
-day(ranking_start)<-days_in_month(ranking_start) # set day of the date = last day of the month
-stockdata$ranking_start<-ranking_start
+stockdata$ranking_start<-stockdata$date %m-% months(12) # subtract 12 months
+day(stockdata$ranking_start)<-days_in_month(stockdata$ranking_start) # set day of the date = last day of the month
 
 # calculate end of the formation period for each date
-ranking_end<-stockdata$date %m-% months(2) # subtract one month
-day(ranking_end)<-days_in_month(ranking_end) # set day of the date = last day of the month
-stockdata$ranking_end<-ranking_end
+stockdata$ranking_end<-stockdata$date %m-% months(2) # subtract two months
+day(stockdata$ranking_end)<-days_in_month(stockdata$ranking_end) # set day of the date = last day of the month
+
+# save market capitalization to use for weighting as tcap_shifted
+stockdata2<-stockdata # copy stockdata
+stockdata2$shifted_date<-stockdata2$date %m+% months(1) # shift by one month
+day(stockdata2$shifted_date)<-days_in_month(stockdata2$shifted_date)
+stockdata<-merge(stockdata, # merge tables using the shifted date
+                 stockdata2[,.(permno, shifted_date, tcap)],
+                 by.x=c("permno", "date"), 
+                 by.y=c("permno", "shifted_date"),
+                 all.x=TRUE)
+names(stockdata)[names(stockdata) == "tcap.x"] <- "tcap"
+names(stockdata)[names(stockdata) == "tcap.y"] <- "tcap_shifted"
+stockdata[is.na(stockdata)]<-0 # set NA values to zero (no tcap available --> not considered in the portfolio)
 stockdata
 
-# for testing the start/end dates
-# sdate<-stockdata[,.(ranking_start)][11]
-# edate<-stockdata[,.(ranking_end)][11]
-# stockdata[permno == 10001,] %>% filter(date >= sdate & date <= edate)
-
-# calculate cumulative log returns for each row
-# define function
-csum = function(permno_input, startdate, enddate){
-    sum((stockdata[permno == permno_input,] %>% filter(date >= startdate & date <= enddate))$log_return)
+# add the returns which the ranking will be based on as separate columns
+return_cols<-c()
+for(i in c(2:12)){
+    stockdata2$shifted_date<-stockdata2$date %m+% months(i) # shift by i months
+    day(stockdata2$shifted_date)<-days_in_month(stockdata2$shifted_date)
+    stockdata<-merge(stockdata, # merge return using the shifted date
+                     stockdata2[,.(permno, shifted_date, return)],
+                     by.x=c("permno", "date"),
+                     by.y=c("permno", "shifted_date"),
+                     all.x=TRUE
+    )
+    names(stockdata)[names(stockdata) == "return.x"] <- "return" # correct the column names
+    names(stockdata)[names(stockdata) == "return.y"] <-paste0("return_m", i)
+    return_cols<-c(return_cols, paste0("return_m", i))
 }
-
-csum = Vectorize(csum)
-
-#execute calculation (use pbapply to show a progress bar)
-stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-# stockdata$cum_log_return2<-mapply(csum, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-# save.image(file='./wksp/checkpoint_1.RData')
-# calculate number of stock returns available for the past 11 months 
-fcount = function(permno_input, startdate, enddate){
-    nrow((stockdata[permno == permno_input,] %>% filter(date >= startdate & date <= enddate)))
-}
-
-fcount = Vectorize(fcount)
-
-#execute counting
-stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
+stockdata
+return_cols
+stockdata$available_returns<-rowSums(!is.na(stockdata[,return_cols, with=FALSE])) # compute number of available returns
 stockdata
 
-# save.image(file='./wksp/checkpoint_2.RData')
+stockdata2<-NULL
+
+stockdata$cum_return<-rowProds(1+as.matrix(stockdata[,return_cols, with=FALSE]), na.rm=T) # compute cumulative product
+stockdata
+stockdata<-stockdata[, !return_cols, with=FALSE] # drop return_cols (not needed anymore)
+return_cols<-NULL
+stockdata
+
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
 
 # normalize using the number of available returns
-stockdata$cum_log_return<-stockdata$cum_log_return / stockdata$available_returns
-
+stockdata$cum_return<-stockdata$cum_return / stockdata$available_returns
 # cut returns for each date into deciles to determine winner/loser portfolios
-stockdata[,bin:=cut(cum_log_return,
-                    quantile(cum_log_return,probs=seq(from=0,to=1,by=1/10),na.rm =T),
+stockdata[,bin:=cut(cum_return,
+                    quantile(cum_return,probs=seq(from=0,to=1,by=1/10),na.rm =T),
                     include.lowest=TRUE, 
                     labels=FALSE),
           by=date]
-stockdata
+
 
 # get data of the stocks in the top decile
 top<-stockdata[bin == 10]
 #calculate sum of the market capitalization for each date
-top$tcapsum<-ave(top$tcap, top$date, FUN=sum)
+top$tcapsum<-ave(top$tcap_shifted, top$date, FUN=sum)
 top
 # get data of the stocks in the bottom decile
 bottom<-stockdata[bin == 1]
 #calculate sum of the market capitalization for each date
-bottom$tcapsum<-ave(bottom$tcap, bottom$date, FUN=sum)
+bottom$tcapsum<-ave(bottom$tcap_shifted, bottom$date, FUN=sum)
 bottom
+
 
 # group by date and calculate value-weighted return
 top<-top %>% group_by(date) %>%
-    summarise(vw_return = sum(return * tcap / tcapsum))
+    summarise(vw_return = sum(return * tcap_shifted / tcapsum))
 top
 
 # convert back from a tibble to a data.table
@@ -116,7 +121,7 @@ setDT(top)
 top
 
 bottom<-bottom %>% group_by(date) %>%
-    summarise(vw_return = sum(return * tcap / tcapsum))
+    summarise(vw_return = sum(return * tcap_shifted / tcapsum))
 bottom
 # convert back from a tibble to a data.table
 setDT(bottom)
@@ -126,9 +131,11 @@ portfolios<-merge(bottom, top, by.x="date", by.y="date")
 colnames(portfolios)<-c("date", "return_bottom", "return_top")
 portfolios
 
+
 #plotting
-portfolios$cum_top<-cumprod(1+portfolios$return_top)
 portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
+portfolios$cum_top<-cumprod(1+portfolios$return_top)
+
 ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=cum_bottom,color="bottom")) + geom_line(aes(y=cum_top,color="top"))
 
 # if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
@@ -177,12 +184,25 @@ lapply(stockdata2, class)
 stockdata2[,date:=as.Date(date,format="%Y-%m-%d")]
 lapply(stockdata2, class)
 
+stockdata3<-stockdata2 # copy stockdata
+stockdata3$shifted_date<-stockdata3$date %m+% months(1) # shift by one month
+day(stockdata3$shifted_date)<-days_in_month(stockdata3$shifted_date)
+stockdata2<-merge(stockdata2, # merge tables using the shifted date
+                 stockdata3[,.(permno, shifted_date, tcap)],
+                 by.x=c("permno", "date"), 
+                 by.y=c("permno", "shifted_date"),
+                 all.x=TRUE)
+names(stockdata2)[names(stockdata2) == "tcap.x"] <- "tcap"
+names(stockdata2)[names(stockdata2) == "tcap.y"] <- "tcap_shifted"
+stockdata2[is.na(stockdata2)]<-0 # set NA values to zero (no tcap available --> not considered in the portfolio)
+stockdata2
+
 # calculate total market capitalization for each date
-stockdata2$tcapsum<-ave(stockdata2$tcap, stockdata2$date, FUN=sum)
+stockdata2$tcapsum<-ave(stockdata2$tcap_shifted, stockdata2$date, FUN=sum)
 
 # group by date and calculate value-weighted return
 stockdata2<-stockdata2 %>% group_by(date) %>%
-    summarise(vw_return = sum(return * tcap / tcapsum))
+    summarise(vw_return = sum(return * tcap_shifted / tcapsum))
 stockdata2
 
 # convert back from a tibble to a data.table
@@ -191,7 +211,10 @@ stockdata2
 
 # calculate the start of a 126-day time period for each date which will be used to estimate the variance (see
 # page 230 of the paper)
-stockdata2[, calc_start:= date %m-% days(126)]
+stockdata2$calc_start<-stockdata2$date %m-% months(1) # shift one month back to account for time at which investment
+# decision is made
+day(stockdata2$calc_start)<-days_in_month(stockdata2$date)
+stockdata2[, calc_end:= calc_start %m-% days(126)]
 stockdata2
 
 # calculate the variance for each date using the specified periods of time
@@ -203,7 +226,7 @@ var_vec = function(startdate, enddate){
 var_vec = Vectorize(var_vec)
 
 # execute variance calculation and remove rows that have no variance (NA)
-stockdata2$var<-mapply(var_vec, stockdata2$calc_start, stockdata2$date)
+stockdata2$var<-mapply(var_vec, stockdata2$calc_start, stockdata2$calc_end)
 stockdata2
 stockdata2<-stockdata2[complete.cases(stockdata2), ]
 stockdata2
