@@ -129,11 +129,37 @@ portfolios<-merge(bottom, top, by.x="date", by.y="date")
 colnames(portfolios)<-c("date", "return_bottom", "return_top")
 portfolios
 
+# if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
+# margin that we post as we implement our strategy earns interest at this rate
+ffdata<-fread("./data/F-F_Research_Data_Factors.csv")
+ffdata$RF<-ffdata$RF/100 # convert from percentage values to actual values
+ffdata[,date:=as.Date(paste(year, month, "01", sep="-"))]
+day(ffdata$date)<-days_in_month(ffdata$date)
+ffdata
+ffdata<-ffdata[,.(date, RF)]
+ffdata
+
+
+# merge table containing the risk-free returns with the portfolios table
+portfolios<-merge(portfolios, ffdata, by.x="date", by.y="date")
+portfolios
+
+# calculate return of the WML portfolio for each month (see Appendix A of the paper)
+portfolios[,return_wml:=return_top-return_bottom+RF]
+portfolios
+
 #plotting
 portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
 portfolios$cum_top<-cumprod(1+portfolios$return_top)
+portfolios$cum_wml<-cumprod(1+portfolios$return_wml)
 
 
 ggplot(data=portfolios,aes(x=date)) + 
-    geom_line(aes(y=cum_bottom,color="bottom")) + 
-    geom_line(aes(y=cum_top,color="top"))
+    geom_line(aes(y=cum_bottom, color="bottom")) + 
+    geom_line(aes(y=cum_top, color="top")) + 
+    geom_line(aes(y=cum_wml, color="wml"))
+
+# delete columns used for plotting
+portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml"), with=FALSE]
+# save results
+save.image("wksp/exercise1.RData")
