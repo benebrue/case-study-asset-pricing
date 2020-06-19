@@ -72,7 +72,7 @@ for(i in c(2:12)){
 }
 stockdata
 return_cols
-stockdata$available_returns<-rowSums(!is.na(stockdata[,return_cols, with=FALSE])) # compute number of available returns
+stockdata$available_returns<-rowSums(!is.na(stockdata[,return_cols, with=FALSE])) # compute no of available returns
 stockdata
 
 stockdata2<-NULL
@@ -82,6 +82,21 @@ stockdata
 stockdata<-stockdata[, !return_cols, with=FALSE] # drop return_cols (not needed anymore)
 return_cols<-NULL
 stockdata
+
+# compute market return for each date (will be needed for exercise 2)
+stockdata2<-stockdata
+stockdata2<-stockdata2[,.(permno, date, return, tcap_shifted)]
+stockdata2
+stockdata2$tcapsum<-ave(stockdata2$tcap_shifted, stockdata2$date, FUN=sum)
+stockdata2
+stockdata2<-stockdata2 %>% group_by(date) %>%
+    summarise(return_mkt = sum(return * tcap_shifted / tcapsum))
+stockdata2
+
+# convert back from a tibble to a data.table
+setDT(stockdata2)
+stockdata2<-stockdata2[complete.cases(stockdata2), ]
+stockdata2
 
 # remove rows which have available_returns < 8
 stockdata<-stockdata[available_returns >= 8,]
@@ -127,6 +142,8 @@ bottom
 
 portfolios<-merge(bottom, top, by.x="date", by.y="date")
 colnames(portfolios)<-c("date", "return_bottom", "return_top")
+portfolios<-merge(portfolios, stockdata2, by.x="date", by.y="date")
+stockdata2<-NULL
 portfolios
 
 # if we want to calculate the monthly returns of the WML portfolio, we also need to know the risk-free rate since the
@@ -163,3 +180,4 @@ ggplot(data=portfolios,aes(x=date)) +
 portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml"), with=FALSE]
 # save results
 save.image("wksp/exercise1.RData")
+
