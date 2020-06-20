@@ -49,3 +49,17 @@ portfolios
 ffreg<-lm(return_wml_exc ~ mktrf + smb + hml, data=portfolios)
 summary(ffreg)
 portfolios
+
+# calculate the beta of the WML portfolio
+beta = cov(portfolios$return_wml, portfolios$return_mkt)/var(portfolios$return_mkt)
+
+# calculate the alpha for each date
+portfolios$alpha<-portfolios$return_wml - portfolios$rf - beta * (portfolios$return_mkt - portfolios$rf)
+
+# plot the alphas
+ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=alpha, color="alpha"))
+
+# calculate the mean alpha
+mean(portfolios$alpha)
+count(portfolios$alpha > 0)
+count(portfolios$alpha < 0)

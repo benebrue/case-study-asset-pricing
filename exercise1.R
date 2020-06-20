@@ -169,15 +169,17 @@ portfolios
 portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
 portfolios$cum_top<-cumprod(1+portfolios$return_top)
 portfolios$cum_wml<-cumprod(1+portfolios$return_wml)
+portfolios$cum_mkt<-cumprod(1+portfolios$return_mkt)
 
 
 ggplot(data=portfolios,aes(x=date)) + 
     geom_line(aes(y=cum_bottom, color="bottom")) + 
     geom_line(aes(y=cum_top, color="top")) + 
-    geom_line(aes(y=cum_wml, color="wml"))
+    geom_line(aes(y=cum_wml, color="wml")) + 
+    geom_line(aes(y=cum_mkt, color="mkt"))
 
 # delete columns used for plotting
-portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml"), with=FALSE]
+portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml", "cum_mkt"), with=FALSE]
 # save results
 save.image("wksp/exercise1.RData")
 
