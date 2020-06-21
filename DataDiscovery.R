@@ -2,8 +2,8 @@
 #install.packages("data.table")
 #install.packages("lubridate")
 #install.packages("dplyr")
-install.packages("ggplot2")ss
-install.packages('pbapply')
+#install.packages("ggplot2")
+#install.packages('pbapply')
 
 #load Packages
 library(data.table)
@@ -62,15 +62,16 @@ no_stock <- length(unique(stockdata$permno))
 no_stock
 
 #Checkpoint to save Workspace
-save.image(file='./wksp/checkpoint_1.RData')
+#save.image(file='./wksp/checkpoint_1.RData')
 load('./wksp/checkpoint_1.RData')
 
 
 #****************************
 #Implementation of strategy
 #****************************
-#Testing
 
+
+#Testing
 #stockdata<-stockdata[1:100000,]
 
 
@@ -83,17 +84,16 @@ load('./wksp/checkpoint_1.RData')
 
 #create column for log returns
 stockdata[,log_return:=log(1 + return)] #Doesn't work
-#stockdata$log_return = log(1+stockdata$return)
 stockdata
 
 # calculate start of the formation period for each date
-ranking_start<-stockdata$date %m-% months(11) # subtract eleven months because the return stored as that of the 
+ranking_start<-stockdata$date %m-% months(12) # subtract eleven months because the return stored as that of the 
 # point in time 11 months ago is the one realized starting 12 months ago
 day(ranking_start)<-days_in_month(ranking_start) # set day of the date = last day of the month
 stockdata$ranking_start<-ranking_start
 
 # calculate end of the formation period for each date
-ranking_end<-stockdata$date %m-% months(1) # subtract one month
+ranking_end<-stockdata$date %m-% months(2) # subtract one month
 day(ranking_end)<-days_in_month(ranking_end) # set day of the date = last day of the month
 stockdata$ranking_end<-ranking_end
 stockdata
@@ -105,18 +105,19 @@ stockdata
 
 
 # calculate number of stock returns available for the past 11 months 
+# fcount = function(permno_input, startdate, enddate){
+#   nrow((stockdata %>% filter(permno==permno_input & date >= startdate & date <= enddate)))
+# }
 fcount = function(permno_input, startdate, enddate){
-  nrow((stockdata %>% filter(permno == permno_input & date >= startdate & date <= enddate)))
+  nrow((stockdata[permno ==permno_input] %>% filter(date >= startdate & date <= enddate)))
 }
+
+
 
 fcount = Vectorize(fcount)
 
 #execute counting
 stockdata$available_returns<-pbmapply(fcount, stockdata$permno, stockdata$ranking_start, stockdata$ranking_end)
-stockdata
-
-# remove rows which have available_returns < 8
-stockdata<-stockdata[available_returns >= 8,]
 stockdata
 
 #save.image(file='./wksp/checkpoint_1_full.RData')
@@ -135,21 +136,49 @@ stockdata$cum_log_return<-pbmapply(csum, stockdata$permno, stockdata$ranking_sta
 stockdata
 
 
+#as we need tcap of previous month for value-weight
+
+tcap_prev = function(permno_input, input_date){
+  sum((stockdata[permno == permno_input,] %>% filter(date==input_date))$tcap)
+}
+
+tcap_prev = Vectorize(tcap_prev)
+stockdata$prev_month <- stockdata$date %m-% months(1)
+day(stockdata$prev_month) <- days_in_month(stockdata$prev_month)
+stockdata$tcap_prev<-pbmapply(tcap_prev, stockdata$permno, stockdata$prev_month)
+stockdata
+stockdata[is.na(stockdata)]<-0
+stockdata$tcap <- stockdata$tcap_prev
+
+
+
+# remove rows which have available_returns < 8
+stockdata<-stockdata[available_returns >= 8,]
+
 # cut returns for each date into deciles to determine winner/loser portfolios
 
-quantile_breaks <- quantile(stockdata$cum_log_return,probs=seq(from=0,to=1,by=1/10),na.rm =T)
-stockdata[,bin:=cut(cum_log_return,
-                    quantile_breaks,
-                    include.lowest=TRUE, 
-                    labels=FALSE),
-          by=date]
+# quantile_breaks <- quantile(stockdata$cum_log_return,probs=seq(from=0,to=1,by=1/10),na.rm =T)
+# stockdata[,bin:=cut(cum_log_return,
+#                     quantile_breaks,
+#                     include.lowest=TRUE, 
+#                     labels=FALSE),
+#           by=date]
+stockdata$bin <-NULL
+stockdata = stockdata %>% group_by(date) %>% 
+  mutate(bin = ntile(cum_log_return, 10))
+
+
+
 stockdata
+
+
+
 #check deciles for random date and bin1 and bin10
 mean(filter(stockdata, bin==1&date=='2012-11-30')$cum_log_return)
 mean(filter(stockdata, bin==10&date=='2012-11-30')$cum_log_return)
 
 
-#save.image(file='./wksp/checkpoint_2_full.RData')
+save.image(file='./wksp/checkpoint_2_full.RData')
 load('./wksp/checkpoint_2_full.RData')
 
 #calculate sum of capitalization for each month and bin 
@@ -224,5 +253,8 @@ portfolios$invest_return_wml <- cumprod(1+portfolios$wml_return)
 load('./wksp/checkpoint_3_full.RData')
 
 portfolios
-ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=invest_return_top,color="Top"))+ geom_line(aes(y=invest_return_bottom,color="Bottom"))+ geom_line(aes(y=invest_return_wml,color="WML")) +geom_line(aes(y=invest_rf,color="RF"))
+ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=invest_return_top,color="Top"))+
+                                      geom_line(aes(y=invest_return_bottom,color="Bottom"))+
+                                      #geom_line(aes(y=invest_return_wml,color="WML"))+
+                                      geom_line(aes(y=invest_rf,color="RF"))
 

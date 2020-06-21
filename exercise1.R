@@ -170,16 +170,33 @@ portfolios$cum_bottom<-cumprod(1+portfolios$return_bottom)
 portfolios$cum_top<-cumprod(1+portfolios$return_top)
 portfolios$cum_wml<-cumprod(1+portfolios$return_wml)
 portfolios$cum_mkt<-cumprod(1+portfolios$return_mkt)
+portfolios$cum_rf<-cumprod(1+portfolios$RF)
+
+portfolios_plot<-portfolios[, c("date","cum_bottom", "cum_top", "cum_wml", "cum_mkt","cum_rf"), with=FALSE]
+
+min_plot_date <- min(portfolios_plot$date)%m-% days(1)
+portfolios_plot<-rbind(portfolios_plot,t(c(1,1,1,1,1,1))) 
 
 
-ggplot(data=portfolios,aes(x=date)) + 
-    geom_line(aes(y=cum_bottom, color="bottom")) + 
-    geom_line(aes(y=cum_top, color="top")) + 
-    geom_line(aes(y=cum_wml, color="wml")) + 
-    geom_line(aes(y=cum_mkt, color="mkt"))
+ggplot(data=portfolios_plot,aes(x=date)) + 
+    geom_line(aes(y=cum_bottom, color="Past Losers",linetype="Past Losers")) + 
+    geom_line(aes(y=cum_top, color="Past Winners",linetype="Past Winners")) + 
+    geom_line(aes(y=cum_wml, color="WML",linetype="WML")) + 
+    geom_line(aes(y=cum_mkt,color="Market",linetype="Market"))+
+    geom_line(aes(y=cum_rf,color="Riskfree",linetype="Riskfree"))+
+    scale_color_manual("Color",values = c("Past Losers"="black","Past Winners"= "black",
+                                  "WML"="#009682","Market"="#4664AA","Riskfree"="grey"))+
+    scale_linetype_manual("Lines",values = c("Past Losers"="dashed","Past Winners"= "dotted",
+                                     "WML"="solid","Market"="solid","Riskfree"="solid"))+
+    xlab("Date")+
+    ylab("Dollar value of investment")+
+    guides(linetype=guide_legend(keywidth = 3, keyheight = 1),
+         colour=guide_legend(keywidth = 3, keyheight = 1))
+
+
 
 # delete columns used for plotting
-portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml", "cum_mkt"), with=FALSE]
+portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml", "cum_mkt","cum_rf"), with=FALSE]
 # save results
 save.image("wksp/exercise1.RData")
 
