@@ -1,4 +1,4 @@
-#install.packages("data.table", "lubridate", "dplyr", ggplot2", "matrixStats")
+#install.packages("data.table", "lubridate", "dplyr", ggplot2", "matrixStats","PerformanceAnalytics")
 # load the data.table package
 library(data.table)
 # load the lubridate package
