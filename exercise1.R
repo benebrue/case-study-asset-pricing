@@ -194,8 +194,10 @@ plot <- ggplot(data=portfolios_plot,aes(x=date)) +
             #                                 "WML"="solid","Market"="solid","Riskfree"="solid"))+
             xlab("Date")+
             ylab("Dollar value of investment")+
+            ylim(0,6.5)+
             guides(linetype=guide_legend(keywidth = 3, keyheight = 1),
                 colour=guide_legend(keywidth = 3, keyheight = 1))
+
 plot + theme(legend.position = c(0.1, 0.85))
 
 # delete columns used for plotting
@@ -246,5 +248,6 @@ ggplot(data=check_data_plot,aes(x=date)) + geom_line(aes(y=invest_return_check_1
 #check Correlation between returns
 cor(portfolios$return_top,check_data_plot$return)
 cor(portfolios$return_bottom,check_data_plot$return_1)
+
 
 
