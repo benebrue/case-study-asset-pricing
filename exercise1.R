@@ -9,6 +9,9 @@ library(dplyr)
 library(ggplot2)
 # load the matrixStats library to enable use of the rowProds operation
 library(matrixStats)
+#load PerformanceAnalytics to calculate Performance
+library(PerformanceAnalytics)
+
 # read file with stock data
 stockdata<-fread("./data/stock_data.csv")
 #!!!for development purposes only: reduce size of the dataset
@@ -175,28 +178,73 @@ portfolios$cum_rf<-cumprod(1+portfolios$RF)
 portfolios_plot<-portfolios[, c("date","cum_bottom", "cum_top", "cum_wml", "cum_mkt","cum_rf"), with=FALSE]
 
 min_plot_date <- min(portfolios_plot$date)%m-% days(1)
-portfolios_plot<-rbind(portfolios_plot,t(c(1,1,1,1,1,1))) 
 
+portfolios_plot<-rbindlist(list(portfolios_plot,list(min_plot_date,1,1,1,1,1)))
+setDT(portfolios_plot)
 
-ggplot(data=portfolios_plot,aes(x=date)) + 
-    geom_line(aes(y=cum_bottom, color="Past Losers",linetype="Past Losers")) + 
-    geom_line(aes(y=cum_top, color="Past Winners",linetype="Past Winners")) + 
-    geom_line(aes(y=cum_wml, color="WML",linetype="WML")) + 
-    geom_line(aes(y=cum_mkt,color="Market",linetype="Market"))+
-    geom_line(aes(y=cum_rf,color="Riskfree",linetype="Riskfree"))+
-    scale_color_manual("Color",values = c("Past Losers"="black","Past Winners"= "black",
-                                  "WML"="#009682","Market"="#4664AA","Riskfree"="grey"))+
-    scale_linetype_manual("Lines",values = c("Past Losers"="dashed","Past Winners"= "dotted",
-                                     "WML"="solid","Market"="solid","Riskfree"="solid"))+
-    xlab("Date")+
-    ylab("Dollar value of investment")+
-    guides(linetype=guide_legend(keywidth = 3, keyheight = 1),
-         colour=guide_legend(keywidth = 3, keyheight = 1))
-
-
+plot <- ggplot(data=portfolios_plot,aes(x=date)) + 
+            geom_line(aes(y=cum_bottom, color="Past Losers")) + 
+            geom_line(aes(y=cum_top, color="Past Winners")) + 
+            geom_line(aes(y=cum_wml, color="WML")) + 
+            geom_line(aes(y=cum_mkt,color="Market"))+
+            geom_line(aes(y=cum_rf,color="Riskfree"))+
+            scale_color_manual("Legend",values = c("Past Losers"="#7f7f7f","Past Winners"= "#d9d9d9",
+                                  "WML"="#009682","Market"="#4664AA","Riskfree"="black"))+
+            #scale_linetype_manual("Lines",values = c("Past Losers"="dashed","Past Winners"= "dotted",
+            #                                 "WML"="solid","Market"="solid","Riskfree"="solid"))+
+            xlab("Date")+
+            ylab("Dollar value of investment")+
+            guides(linetype=guide_legend(keywidth = 3, keyheight = 1),
+                colour=guide_legend(keywidth = 3, keyheight = 1))
+plot + theme(legend.position = c(0.1, 0.85))
 
 # delete columns used for plotting
 portfolios<-portfolios[, !c("cum_bottom", "cum_top", "cum_wml", "cum_mkt","cum_rf"), with=FALSE]
+
+
+#Calculate Performance measures
+#Vaue at Risk
+VaR(portfolios$return_wml)
+VaR(portfolios$return_mkt)
+
+
+#Sharpe-Ratio WML
+df_sharpe_wml <- portfolios[,c("date","return_wml"), with=FALSE]
+mean_rf <- mean(portfolios$RF)
+SharpeRatio(df_sharpe_wml,Rf=mean_rf, FUN="StdDev")
+#Sharpe-Ratio Market
+df_sharpe_mkt <- portfolios[,c("date","return_mkt"), with=FALSE]
+SharpeRatio(df_sharpe_mkt,Rf=mean_rf, FUN="StdDev")
+
+#Variance
+sd(portfolios$return_wml)
+sd(portfolios$return_mkt)
+
+#Max Drawdown
+maxDrawdown(portfolios$return_wml)
+maxDrawdown(portfolios$return_mkt)
+
 # save results
 save.image("wksp/exercise1.RData")
+
+
+#Check with Data from Daniel & Moskowitz
+
+check_data <- fread("./data/DM_data_2017_03/m_m_pt_tot.txt")
+colnames(check_data)<- c('date','bin','return','tcap','v5')
+check_data[,date:=as.Date(paste0(date),format="%Y%m%d")]
+lapply(check_data,class)
+check_data_plot <- filter(check_data, date<=max(portfolios$date)&date>=min(portfolios$date)&bin==10)
+check_data_plot$invest_return_check_10 <- cumprod(1+check_data_plot$return) 
+check_data_plot$return_1 <- filter(check_data,  date<=max(portfolios$date)&date>=min(portfolios$date)&bin==1)$return
+check_data_plot$invest_return_check_1 <- cumprod(1+check_data_plot$return_1) 
+
+#plot their data
+ggplot(data=check_data_plot,aes(x=date)) + geom_line(aes(y=invest_return_check_10,color="bin10"))+
+    geom_line(aes(y=invest_return_check_1,color="bin1"))
+
+#check Correlation between returns
+cor(portfolios$return_top,check_data_plot$return)
+cor(portfolios$return_bottom,check_data_plot$return_1)
+
 

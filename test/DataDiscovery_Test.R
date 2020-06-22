@@ -3,14 +3,15 @@
 #install.packages("lubridate")
 #install.packages("dplyr")
 #install.packages("ggplot2")
-#install.packages('pbapply')
-
+#nstall.packages('pbapply')i
+install.packages('PerformanceAnalytics')
 #load Packages
 library(data.table)
 library(lubridate)
 library(dplyr)
 library(ggplot2)
 library(pbapply)
+library(PerformanceAnalytics)
 
 #load and formate stock data
 stockdata <- fread("./data/stock_data.csv")
@@ -378,21 +379,21 @@ ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=invest_return_top,color="b
                                       geom_line(aes(y=invest_return_4,color="bin04"))+
                                       geom_line(aes(y=invest_return_3,color="bin03"))+
                                       geom_line(aes(y=invest_return_2,color="bin02"))
-
-check_data <- fread("./data/m_m_pt_tot.txt")
+check_data_plot <- NULL
+check_data <- fread("./data/DM_data_2017_03/m_m_pt_tot.txt")
 colnames(check_data)<- c('date','bin','return','tcap','v5')
 check_data[,date:=as.Date(paste0(date),format="%Y%m%d")]
 lapply(check_data,class)
-check_data_plot <- filter(check_data, date<=max(portfolios$date)&date>="2001-09-28"&bin==10)
+check_data_plot <- filter(check_data, date<=max(portfolios$date)&date>=min(portfolios$date)&bin==10)
 check_data_plot$invest_return_check_10 <- cumprod(1+check_data_plot$return) 
-check_data_plot$return_1 <- filter(check_data,  date<=max(portfolios$date)&date>="2001-09-28"&bin==1)$return
+check_data_plot$return_1 <- filter(check_data,  date<=max(portfolios$date)&date>=min(portfolios$date)&bin==1)$return
 check_data_plot$invest_return_check_1 <- cumprod(1+check_data_plot$return_1) 
 
 ggplot(data=check_data_plot,aes(x=date)) + geom_line(aes(y=invest_return_check_10,color="bin10"))+
   geom_line(aes(y=invest_return_check_1,color="bin1"))
 
 
-cor(portfolio_10$vw_return,check_data_plot$return)
-cor(portfolio_1$vw_return,check_data_plot$return_1)
+cor(portfolios$return_top,check_data_plot$return)
+cor(portfolios$return_bottom,check_data_plot$return_1)
 
 min(portfolios$date)
