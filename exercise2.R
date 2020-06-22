@@ -57,7 +57,9 @@ beta = cov(portfolios$return_wml, portfolios$return_mkt)/var(portfolios$return_m
 portfolios$alpha<-portfolios$return_wml - portfolios$rf - beta * (portfolios$return_mkt - portfolios$rf)
 
 # plot the alphas
-ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=alpha, color="alpha"))
+ggplot(data=portfolios,aes(x=date)) + geom_line(aes(y=alpha, color="alpha"),colour="#009682")+
+  xlab("Date")+
+  ylab("Alpha")
 
 # calculate the mean alpha
 mean(portfolios$alpha)
