@@ -31,19 +31,18 @@ day(recessiondata$date)<-days_in_month(recessiondata$date) # set day of the date
 recessiondata
 
 # merge recessiondata with the portfolio data
-portfolios<-merge(portfolios, recessiondata, by.x="date", by.y="date")
-portfolios
+portfolios_plot <- portfolios<-merge(portfolios_plot, recessiondata, by.x="date", by.y="date")
 
-mean_wml<-mean(portfolios$return_wml)
-median_wml<-median(portfolios$return_wml)
+#just to visualize bear market
+portfolios_plot$bear_market<-portfolios_plot$recession*6.5
 
-portfolios$wml_vs_mean<-ifelse(portfolios$return_wml > mean_wml, 1, 0)
-portfolios$wml_vs_median<-ifelse(portfolios$return_wml > median_wml, 1, 0)
-portfolios$wml_vs_zero<-ifelse(portfolios$return_wml > 0, 1, 0)
-portfolios
-cor(portfolios$recession, portfolios$wml_vs_mean)
-cor(portfolios$recession, portfolios$wml_vs_median)
-cor(portfolios$recession, portfolios$wml_vs_zero)
+#plot for exercise 4
+plot_4 <- ggplot(data=portfolios_plot,aes(x=date)) + 
+            geom_area(aes(y=bear_market,color="Bear-Market"),fill=rgb(red = 1, green = 0, blue = 0, alpha = 0.5))+
+            geom_line(aes(y=cum_wml, color="WML"))+
+            scale_color_manual("Legend",values = c("WML"="#009682","Bear-Market"=rgb(red = 1, green = 0, blue = 0, alpha = 0.0)))+
+            xlab("Date")+
+            ylab("Dollar value of investment")+
+            ylim(0,6.5)
+plot_4 + theme(legend.position = "none")
 
-reg<-lm(return_wml ~ recession, data=portfolios)
-summary(reg)
