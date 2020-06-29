@@ -1,0 +1,23 @@
+﻿Datei "stocks_data.csv"
+Enthält die monatlichen Returns des gesamten Aktienuniversums
+    permno <- einzigartiger Aktienidentifier
+    date <- letzter Tag des Monats von entsprechendem Return
+    tcap <- Marktkapitalisierung der Aktie in 1000$ zum entsprechenden Datum.
+    return <- monatlicher (bereinigter) Return der entsprechenden Aktie, d.h. falls date z.B. gleich "31.08.2014" dann ist dies der Return für den Zeitraum 01.08.2014-31.08.2014. Aktiensplits, Dividende etc. sind hier schon berücksichtigt
+
+
+Datei "F-F_Research_Data_Factors.csv"
+
+Enthält die monatlichen Returns der 3 Fama French Faktoren und den risikolosen Zinssatz
+    year&month <- Datum, jeweils der letzte Tag des entsprechenden Monats
+    mktmrf <- monatlicher Return des market-minus-risk-free-rate Faktors
+    smb <- monatlicher Return des small-minus-big Faktors
+    hml <- monatlicher Return des high-minus-low Faktors
+    rf <- monatlicher risikolose Zinssatz
+
+
+Datei "nber_recessions.csv"
+
+Enthält eine Idikatorvariable die angibt, ob sich die US-Wirtschaft im entsprechenden Monat in einer Rezession befunden hat
+    date <- letzter Tag des Monats des recession Indikators
+    recession <- Indikator, =1 wenn gesamter Monat als Rezessionsmonat gilt, ansonsten =0 (bezieht sich auf den jeweils vorangegangen Monat, Bsp.: recession = 1 für 30.10.2009 --> Oktober 2009 war ein Rezessionsmonat)
