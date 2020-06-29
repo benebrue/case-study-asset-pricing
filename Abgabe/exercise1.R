@@ -12,7 +12,7 @@ library(matrixStats)
 #load PerformanceAnalytics to calculate Performance
 library(PerformanceAnalytics)
 
-#load results
+#load preprocessed results if desired
 #load("wksp/exercise1.RData")
 
 # read file with stock data
@@ -107,7 +107,7 @@ stockdata2
 stockdata<-stockdata[available_returns >= 8,]
 stockdata
 
-# normalize using the number of available returns
+# normalize cumulative return using the number of available returns for each stock and date
 stockdata$cum_return<-stockdata$cum_return / stockdata$available_returns
 # cut returns for each date into deciles to determine winner/loser portfolios
 stockdata[,bin:=cut(cum_return,
@@ -193,8 +193,6 @@ plot <- ggplot(data=portfolios_plot,aes(x=date)) +
             geom_line(aes(y=cum_rf,color="Riskfree"))+
             scale_color_manual("Legend",values = c("Past Losers"="#7f7f7f","Past Winners"= "#d9d9d9",
                                   "WML"="#009682","Market"="#4664AA","Riskfree"="black"))+
-            #scale_linetype_manual("Lines",values = c("Past Losers"="dashed","Past Winners"= "dotted",
-            #                                 "WML"="solid","Market"="solid","Riskfree"="solid"))+
             xlab("Date")+
             ylab("Dollar value of investment")+
             ylim(0,6.5)+

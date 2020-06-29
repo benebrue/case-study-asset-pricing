@@ -50,10 +50,12 @@ ffreg<-lm(return_wml_exc ~ mktrf + smb + hml, data=portfolios)
 summary(ffreg)
 portfolios
 
-# calculate the beta of the WML portfolio
+# calculate the beta of the WML portfolio using the standard CAPM beta formula
+# for the formula see for example Fama, Eugene F. and French, Kenneth R.: The Capital Asset Pricing Model: Theory
+# and Evidence. In: Journal of Economic Perspectives 18 (2004), Nr. 3, p. 25 - 46. 
 beta = cov(portfolios$return_wml, portfolios$return_mkt)/var(portfolios$return_mkt)
 
-# calculate the alpha for each date
+# calculate the alpha for each date by rearranging the CAPM formula found in the paper given above
 portfolios$alpha<-portfolios$return_wml - portfolios$rf - beta * (portfolios$return_mkt - portfolios$rf)
 
 # plot the alphas

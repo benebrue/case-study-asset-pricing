@@ -33,10 +33,10 @@ recessiondata
 # merge recessiondata with the portfolio data
 portfolios_plot <- portfolios<-merge(portfolios_plot, recessiondata, by.x="date", by.y="date")
 
-#just to visualize bear market
+#values used to visualize the bear market periods
 portfolios_plot$bear_market<-portfolios_plot$recession*6.5
 
-#plot for exercise 4
+#plot for exercise 4 that shows the bear market periods as red bars
 plot_4 <- ggplot(data=portfolios_plot,aes(x=date)) + 
             geom_area(aes(y=bear_market,color="Bear-Market"),fill=rgb(red = 1, green = 0, blue = 0, alpha = 0.5))+
             geom_line(aes(y=cum_wml, color="WML"))+
