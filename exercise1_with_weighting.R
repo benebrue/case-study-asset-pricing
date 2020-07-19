@@ -296,6 +296,9 @@ erdata
 vdata<-portfolios
 vdata$return_bottom<-NULL
 vdata$return_top<-NULL
+vdata$cum_bottom<-NULL
+vdata$cum_top<-NULL
+vdata$RF<-NULL
 vdata
 
 # convert vdata to a timeseries object which the rugarch package is optimized for
@@ -322,6 +325,7 @@ v_pred
 v_pred<-v_pred[,shifted_date:=date %m-% months(1)]
 day(v_pred$shifted_date)<-days_in_month(v_pred$shifted_date)
 v_pred
+erdata
 weightdata<-merge(erdata, v_pred, by.x="date", by.y="shifted_date") # inner join
 weightdata
 weightdata$date.y<-NULL

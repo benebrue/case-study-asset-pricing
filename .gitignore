@@ -3,6 +3,8 @@
 .RData
 .Ruserdata
 .ipynb_checkpoints/
+wksp/
+exercise1_with_weighting.R
 
 # General
 .DS_Store
